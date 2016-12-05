@@ -1,0 +1,1192 @@
+---
+title: "Introduction to Natural Language Processing - Do Good Data 2016"
+author:
+  name: Dan Acheson
+  affiliation: Timshel
+  email: dan@timshel.com
+output: 
+  html_document:
+    toc: true
+---
+
+
+***
+
+Dependencies
+========================================================
+### Code written in R 3.1.3__
+### The code below should install what you don't already have__
+```{r dependencies}
+setwd(getwd())
+required_packages <- c('stringr', 'stringi', 'quanteda', 'tm', 'data.table', 'topicmodels', 'e1071', 'wordcloud', 'RColorBrewer', 'proxy', 'ape', 'servr')
+
+new.packages <- required_packages[!(required_packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages)){
+  install.packages(required_packages, repos='http://cran.us.r-project.org')
+}
+```
+
+***
+
+Natural Language Processing 
+=====
+- Techniques, tools and algorithms that will allow computational approaches to language processing
+- Historically comes from the combination of a number of fields
+    - Computer science
+    - Computational linguistics
+    - Artificial Intelligence
+    - Psychology
+
+
+***
+
+## Terminology
+- __Natural language:__ language produced by humans
+- __Text__: the writen form of language
+- __String__: computer representation of text (a.k.a., character) 
+- __Document__: a bunch of text that comes from the same place
+    - Can be as large as a whole book, or as small as a single tweet
+- __Corpus__: A collection of documents (plural: _corpora_)
+
+***
+
+## Data Sources for Text
+__See additional resources below for more__
+
+1. APIs from the services you love
+    - [Twitter API](https://dev.twitter.com/overview/documentation) is particularly is useful
+2. Web-scraping
+3. PDFs / printed text
+    - Need optical character recognition (OCR)
+4. Digitized collections of books, newspapers, etc.
+    - [Project Gutenberg](https://www.gutenberg.org/)
+    - [New York Times](http://www.nytimes.com/ref/membercenter/nytarchive.html)
+5. Curated corpora by NLP researchers
+6. [Wikipedia!](http://https://dumps.wikimedia.org/)
+
+***
+
+Text Wrangling 101
+========================================================
+- Very important skills to learn if you're going to work with text
+- Base R has some decent functionality
+
+>```grep gsub substr strsplit tolower/toupper paste/paste0```
+
+- **To start:** UPPER and lower case
+```{r echo = F}
+setwd(getwd())
+```
+```{r upper_lower}
+myText <- "Do Good Data 2016"
+tolower(myText) #lowercase
+toupper(myText) #uppercase
+```
+
+***
+
+## String Splitting
+- Today we'll primarily use the [```stringr```](https://cran.r-project.org/package=stringr) package
+- Faster and more transparent than base R
+- Uses the [```stringi```](https://cran.r-project.org/package=stringi) package underneath
+
+**Comma separated text**
+```{r str_split1}
+library(stringr)
+myText <- "Comma,separated,text"
+str_split(myText,",")
+```
+
+**Email addresses**
+```{r str_split2}
+myText <- "dan@timshel.com"
+str_split(myText,"@")
+```
+
+***
+
+## String Splitting on a list
+**Applying ```str_split``` on a list**
+```{r str_split_list}
+list_of_emails <- c("fred@flinstones.com", "wilma@flinstones.com","pebbles@flinstones.com")
+split_list <- sapply(list_of_emails, function(x) str_split(x,"@"), USE.NAMES =F)
+split_list[1:2]
+
+#Extract names from list
+first_names <- sapply(split_list, function(x) x[1])
+last_names <- sapply(split_list, function(x) x[2])
+first_names
+```
+
+***
+
+## Combining / concatenating text
+**Using base R's ```paste``` or ```paste0```**
+```{r paste}
+split_text = c("My", "text", "in", "a", "vector / list")
+split_text
+paste0(split_text, collapse = ",")
+```
+
+***
+
+## Trimming
+**Remove trailing or leading whitespace (e.g., a newline) with ```str_trim```**
+```{r str_trim}
+myText = "  Space at beginning removed"
+str_trim(myText, side = "left")
+```
+```{r}
+myText = "Text with carriage return and newlines removed\r\n"
+str_trim(myText, side = "right")
+```
+
+***
+
+Regular Expressions
+========================================================
+**A brief but important aside**
+
+- Regular Expressions (i.e., regexes) are simple yet powerful language for finding patterns in text
+- If you don't know 'em, go out and learn 'em. 
+- You'll find tons of applications and seriously increase your ability to search, munge and manipulate text.
+- For more info, check the following: [regex in stringi](http://finzi.psych.upenn.edu/library/stringi/html/stringi-search-regex.html)
+
+## Regular Expression Syntax:
+Syntax | Example
+------ | -------
+`[ ]` set membership <br><br> | `[A-Za-z]` = all letters <br><br>
+`[^ ]` set exclusion <br><br> | `[^0-9]` = exclude numbers <br><br>
+`*` repeat pattern 0 or more times <br><br> | `[a-z]*` = lowercase repeat 1+<br><br>
+`+` repeat pattern 1 or more times <br><br> | `ab+` = "ab" repeated 0+ times<br><br>
+`{1,3}` repeats between 1-3X <br><br> | `[a-z]{1,3}` = lowercase letters 1-3X<br><br>
+`\` escape character to ignore regex syntax (`\\` in R) | `\\.com` = treat   " . "   like a period
+`.` anything once | `b.b` matches "bob", "bub" but not "barb"
+`.*` anything repeated (greedy) <br>**Be Careful!**  `.*?` is non-greedy | `b\.*b` matches anything beginning and ending with "b"
+`^` begins with | `^[A-Z]` = begins with capital letter
+`$` ends with | `.*ing$` = anything ending with "ing"
+
+
+***
+
+Wrangling Continued
+========================================================
+## Substituting / Replacing
+**Getting rid of numbers**
+```{r regex replace, cache = T}
+myText = "Text with 9879numbers 54 I do43n't wan234t"
+str_replace_all(myText,"[0-9]+","")
+#Alternate version
+str_replace_all(myText,"[:digit:]","")
+```
+
+***
+
+## Extracting Text
+**Extract email addresses!**
+```{r regex_extract1, cache = T}
+myText = "Address 1: dan@timshel.com, Address 2: barney_rubble@flinstones.com"
+str_extract_all(myText, "[a-zA-Z0-9_]+@.*.[a-zA-Z]+", simplify = T)
+```
+**There are two mistakes above. Can you spot them?**
+
+### Extracting Email - Correct
+**Remember ```.*``` is _greedy_, so be careful!**
+**Here using ```.*?``` and escaping the . with ```\\.```**
+```{r regex_extract2, cache = T}
+#NOTE: In R, escape is \\
+str_extract_all(myText, "[a-zA-Z0-9_]+@.*?\\.[a-zA-Z]+", simplify = T)
+```
+
+
+### Extracting HTML content 
+**Using the ```str_match``` function**
+```{r regex_match, cache = T}
+html <- paste(readLines("./pres_data/example.html"), collapse="\n")
+regex = "<li>(.*?)</li>"
+str_match_all(html, regex)
+```
+
+***
+
+## Why learn all of this manual text-processing?
+- Forms of the basis of text processing we'll see later
+- Gives you the tools to customize!
+- Can quickly get to word frequencies, which can be VERY informative
+
+
+***
+
+Word Frequencies
+========================================================
+## Example
+- Let's look at frequencies from 'Alice in Wonderland'
+- Data comes from [Project Gutenberg](https://www.gutenberg.org/)
+
+**Load and Pre-Process**
+```{r word_freq1, cache = T}
+alice <- "./pres_data/alice.txt"
+#read into a character vector
+alice <- paste(readLines(alice), collapse = "\n")
+#Simple pre-processing
+pre_process <- function(txt) {
+  txt <- tolower(txt)
+  txt <- str_replace_all(txt, "\n", " ") #newline with space
+  txt <- str_replace_all(txt,"[ ]{2,}", " ") #extra spaces
+  txt <- str_replace_all(txt, "[^a-zA-Z ]","") #only keep letters
+  return(txt)
+}
+#Pre-process
+alice <- pre_process(alice)
+
+#Get Frequencies
+words <- str_split(alice," ")
+freqs <- table(words)
+freqs <- freqs[order(freqs,decreasing = T)]
+freqs[1:8]
+```
+**What do you notice?**
+
+***
+
+## Plotting word frequencies with wordclouds
+**Using the [```wordcloud```](https://cran.r-project.org/web/packages/wordcloud/) package**
+**We _COULD_ use our frequency table...**
+
+```{r wordcloud, fig.align='center', cache = T}
+library(wordcloud)
+wordcloud(words = names(freqs), freq = as.numeric(freqs), max.words = 20, scale = c(4,0.5))
+```
+
+**Or, we can just take advantage of the package :)**
+
+```{r wordcloud2, fig.align='center', fig.width =5, fig.height = 5, cache = T}
+wc2 = wordcloud(alice, max.words = 20, scale = c(4,0.5))
+```
+
+
+## Wordclouds with color!
+**Use two visual dimensions to emphasize frequency differences**
+```{r wordcloud3, fig.align='center', warning = F, cache = T}
+library(RColorBrewer)
+pal <- brewer.pal(8,"Dark2")
+
+wordcloud(alice, max.words = 20, scale = c(4,0.5), color = pal)
+```
+
+
+***
+
+## Why all this focus on word frequencies?
+1. They're informative!
+2. They are the basis of:
+
+[__THE VECTOR-SPACE MODEL__](https://en.wikipedia.org/wiki/Vector_space_model)
+<div align = "center">
+<img src="./pres_data/images/Vector_Space.png" width=1000 height=600>
+</div>
+
+***
+
+The Vector Space / N-Gram Model
+========================================================
+**Representing documents as vectors**
+```
+text 1: The cow jumped over the moon.
+text 2: The cow ate grass.
+```
+
+```{r dtm example, echo = F, message = F, cache = T}
+library(quanteda) #we'll get into the quanteda package more momentarily
+txt  = c("The cow jumped over the moon.", "The cows ate grass")
+txt_corpus = corpus(txt)
+doc_mat = dfm(txt_corpus, clean = F, verbose = F) 
+```
+
+**The document feature or document term matrix**
+```{r dtm example 2,echo =F, cache = T}
+doc_mat
+```
+
+***
+
+## Pre-processing text for vector space model
+**Pre-processing depends on what you're doing. But generally:**
+1. Remove punctuation
+2. [Tokenization](https://en.wikipedia.org/wiki/Tokenization_(lexical_analysis\)
+3. Remove stop-words (e.g., "a", "the", etc.)
+4. Lowercase
+5. Remove low-frequency words
+6. [Stemming](https://en.wikipedia.org/wiki/Stemming)
+
+***
+
+### Tokenization
+**How you break up your text into meaningful units for analysis**
+<br>
+- Could be individual words
+  - Unigram / bag of words representation
+
+- Could be pairs or triples of words
+  - bigram / trigram
+
+- Could be sentences, paragraphs, etc.
+
+***
+
+### Word stemming
+- Treat similar forms of a word:
+_run_, _runs_, _running_, _runner_?
+
+- As the same word:
+_run_
+
+**Reasons for doing it:**
+
+- Reduce vocabulary size
+- Increase similarity across texts
+
+**Reasons to not do it:**
+
+- Lose information
+
+#### Word stemming - main types
+
+1. Remove suffixes from words
+_run_, _runs_, _running_, _runner_ -> run
+
+- Common algorithms:
+    - Porter, Snowball, Lancaster, regexp
+
+2. Lemmatization
+- Use syntactic analysis to remove inflectional (i.e., sytnactic) endings
+_am_, _is_, _are_ -> be
+
+
+***
+
+Vectorizing documents
+========================================================
+- Thankfully, all of this pre-processing is built into packages / libraries that handle text!
+- Today we'll use the [```quanteda```](https://cran.r-project.org/package=quanteda) package
+```{r dtm_example_clean, message = F, cache = T}
+library(quanteda)
+txt  = c("The cow jumped over the moon.", "The cows ate grass")
+#Convert text list to a corpus
+txt_corpus = corpus(txt)
+doc_mat2 = dfm(txt_corpus, clean = T, stem = T, ignoredFeatures = stopwords("english"), verbose = F)
+doc_mat2
+``` 
+
+## Effects of pre-processing
+**No Pre-Processing**
+```{r doc_mat1, echo = F, cache = T}
+doc_mat
+```
+
+**With Pre-Processing**
+```{r doc_mat2, echo = F, cache = T}
+doc_mat2
+```
+
+***
+
+## From unigrams to n-grams
+- So far what we've done is a unigram, or bag-of-words model
+- Can also incorporate bigrams
+```{r bigrams, echo = F, cache = T}
+doc_mat_bg = dfm(txt_corpus, clean = T, stem = T, ignoredFeatures = stopwords("english"), verbose = F, bigrams = T)
+doc_mat_bg
+```
+- If you want to move to trigrams, check out the [```tm```](https://cran.r-project.org/package=tm) package
+- __Food for thought:__ _What happens to our matrix as we add bigrams, trigrams, etc?_
+
+
+***
+
+Normalizing a document-term matrix
+========================================================
+
+## What happens if documents are different lengths?
+```{r read_alice_again, echo = F, cache = T}
+alice <- "./pres_data/alice.txt"
+#read into a character vector
+alice <- paste(readLines(alice), collapse = "\n")
+```
+
+**A corpus of Alice in Wonderland and our single sentence used before**
+```{r length_compare, cache = T}
+library(quanteda)
+txt  = c("The cow jumped over the moon.", alice)
+txt_corpus = corpus(txt)
+doc_mat3 = dfm(txt_corpus, clean = T, stem = F, ignoredFeatures = stopwords("english"), verbose = F)
+sort(doc_mat3)[,1:10]
+``` 
+
+***
+
+## Normalization techniques
+- Normalize by frequency within each document (i.e., row of our document-term matrix)
+- There are many ways you could do this
+
+### Relative frequency
+```{r relFreq, cache = T}
+relFreq = weight(doc_mat3, type = "relFreq")
+sort(relFreq)[,1:5]
+```
+
+### Maximum frequency
+```{r relMaxFreq, cache = T}
+relFreq = weight(doc_mat3, type = "relMaxFreq")
+sort(relFreq)[,1:5]
+```
+
+- Other common options:
+    - **natural log**
+    - **length normalization**
+
+***
+
+## Term Frequency Inverse Document Frequency (TFIDF)
+**A go-to approach for many NLP tasks**
+1. Normalize by frequency within each document (i.e., by row)
+2. Normalize by _inverse_ frequency across documents (i.e., by column)
+  - ```-log(1 / (# of docs term appears in))```
+  
+### Some insight into what's going on
+__The effect of TFIDF is to emphasize words that frequent within a document, and infrequent across documents__
+<div align="center", position = "center">
+<img src="./pres_data/images/Term_Frequency.png" width = 500>
+</div>
+
+<div align="center", position = "center">
+<img src="./pres_data/images/TFIDF.png" width = 500>
+</div>
+
+
+
+```{r tfidf, cache = T}
+tfidf_norm = weight(doc_mat2, type = "tfidf")
+sort(tfidf_norm)[,1:5]
+```
+
+
+***
+
+Machine Learning with Text
+========================================================
+**After all the vectorizing, we end up with a matrix of features to use for many different tasks:**
+
+- __Unsupervised learning:__
+    * clustering
+    * document similarity
+    * semantic analysis
+- __Supervised learning:__
+    * sentiment analysis
+    * document classification / tagging
+- __Information retrieval__
+
+***
+
+## Clustering / Document Similarity
+__Answers the question:__ Which of our documents group together based the language they contain?
+
+Basic Procedure:
+
+1. Clean and vectorize text
+2. Create a distance / similarity matrix (not always)
+3. Cluster
+
+***
+
+### Clustering Example: Tweets about sustainable development
+**The data:**
+Downloaded from the Twitter search API looking for _"sustainable development"_ and _"SDG"_
+
+```{r read_tweets_sdg, cache = T}
+tweets = read.csv("./pres_data/twitter_dat.csv", stringsAsFactors = F)
+print(tweets$text[1])
+dim(tweets)
+#Let's remove retweets
+RTs <- sapply(tweets$text, function(x) str_detect(x, "RT "))
+tweets <- tweets[!(RTs),]
+dim(tweets)
+```
+
+The ```clean tweets``` function below is a modification from [this blogpost]("https://sites.google.com/site/miningtwitter/questions/sentiment/viralheat")
+```{r clean_tweets1, cache = T}
+clean_tweets <- function(txt) {
+  #Args:
+  #  txt: character vector of text from twitter
+  
+  #Returns:
+  # txt:  cleaned character vector of text
+  
+  # remove retweet entities
+  txt = str_replace_all(txt, "(RT|via)((?:\\b\\W*@\\w+)+)", "")
+  # remove at people
+  txt = str_replace_all(txt,"@\\w+", "")
+  # remove html links
+  txt = str_replace_all(txt,"http\\S+", " ")
+  # remove punctuation
+  txt = str_replace_all(txt,"[[:punct:]]", " ")
+  # remove numbers
+  txt = str_replace_all(txt, "[[:digit:]]", " ")
+  # remove unnecessary spaces
+  txt = str_replace_all(txt,"[ \t]{2,}", " ")
+  txt = str_trim(txt,"both")
+  # remove single character words remaining
+  txt = str_replace_all(txt, " [a-zA-Z] "," ")
+  txt = tolower(txt)
+  return(txt)
+}
+```
+
+#### Clean the tweets
+```{r apply_clean_tweets, cache = T}
+tweets$text_clean = sapply(tweets$text, function(x) clean_tweets(x))
+#Uncleaned
+print(tweets$text[1:2])
+#Cleaned
+print(tweets$text_clean[1:2])
+```
+
+#### Vectorizing for clustering
+- Choice of how you vectorize will depend on the simililarity metric you use
+    - frequency or tfidf coded  
+    - binary coding
+
+- Some choices during pre-processing:
+    - stem?
+    - removed words
+    - frequency cutoffs
+
+```{r tweet_quanteda, cache = T}
+tweet_corpus = corpus(tweets$text_clean) 
+tweet_dfm = dfm(tweet_corpus, clean = T, verbose = F,
+                ignoredFeatures = c(stopwords("english"),"sustainable","development","goals"))
+dim(tweet_dfm)
+#remove terms with low frequency across documents
+tweet_dfm = trim(tweet_dfm, minDoc = 40, verbose = T)
+tweet_dfm = weight(tweet_dfm, method = "tfidf")
+```
+
+***
+
+#### Calculate distance / similarity
+- Many different ways of calculating distance / similarity:
+    - Euclidean
+    - Jaccard
+    - Cosine
+  
+- Distance calculations can take a while depending on the size of the matrix.
+- Solutions:
+    - Reduce the size of the matrix
+    - Consider trying to parallelize
+
+- The [proxy]("https://cran.r-project.org/web/packages/proxy/index.html") package has a number of distance / similarity measures available
+
+- Here we do Euclidean distance after scaling each column
+    - This is roughly equivalent to cosine similarity
+```{r distance_calculation, cache = T}
+library(proxy) 
+#Only perform on a subset to save some time
+tweet_dfm_sub = tweet_dfm[1:3000,]
+sim_mat = dist(scale(tweet_dfm_sub))
+```
+
+***
+
+### Hierarchical Clustering
+- Challenges:
+  - where to make the cuts / how many clusters?
+  - how to [visualize](http://rpubs.com/gaston/dendrograms)?
+
+**Perform hierarchical clustering**
+```{r hier_clust, cache = T}
+hier_clust = hclust(sim_mat, method="ward.D")
+```
+
+***
+
+#### Visualizing Hierarchical Clusters: Dendrograms
+Part of the reason for plotting this is to look for how things are grouping together
+- This should give you insight into how many clusters you might try to extract or where you might make cuts
+**From base R** ```hclust```
+```{r hier_clust_plot, cache = T}
+plot(hier_clust, labels = F) 
+```
+
+**Fan plot** from [ape]("https://cran.r-project.org/web/packages/ape/index.html") package
+
+```{r hier_clust_fan, cache = T}
+library(ape)
+plot(as.phylo(hier_clust), type = "fan") 
+```
+
+***
+
+#### Visualizing Clusters of Text with Wordclouds
+**Steps:**
+
+1. Assign documents to a group by cutting the tree
+2. Look at wordclouds for each group
+```{r hier_clust_word_clouds, cache = T,fig.align='center', eval = T}
+#Cut into 20 groups
+groups = cutree(hier_clust, k = 20)
+
+#Plot wordclouds
+par(mfrow = c(3,3)) 
+for(group in seq(1,17,2)){
+  group_dat = tweet_dfm_sub[which(groups==group),]
+  plot(group_dat, max.words = 20, scale = c(2,0.2))
+}
+```
+
+***
+
+### KMeans Clustering
+
+- One advantage of using KMeans: No similarity matrix needed!
+- Still need to think about:
+    - preprocessing
+    - choice of K
+    - visualizing
+
+```{r kmeans, cache = T}
+k = 20 
+kmeans_clust = kmeans(tweet_dfm[1:3000,], centers = k)
+groups = kmeans_clust$cluster
+```
+
+#### Plotting KMeans
+```{r kmeans_word_clouds2, cache = T,fig.align='center', eval = T, echo = F, warning = F}
+par(mfrow = c(4,4))
+ 
+for(group in 1:16){
+  group_dat = tweet_dfm_sub[which(groups==group)]
+  plot(group_dat, max.words = 20)
+}
+```
+
+***
+
+## Semantic Analysis through topic modeling
+__Answers the question:__ What is the underlying meaning captured in different documents?
+
+- [Topic modeling](https://en.wikipedia.org/wiki/Topic_model) is a statistical approach to natural language processing that find patterns in documents where words within the document can be assigned to abstract 'topics'
+- A document about sports is likely to have a different distribution of words than a document about cooking
+- Check out material from [David Blei](https://www.cs.princeton.edu/~blei/topicmodeling.html) for good intros
+
+### Approaches to topic modeling
+
+**[Latent Semantic Indexing (LSI) / Latent Semantic Analysis (LSA)](https://en.wikipedia.org/wiki/Latent_semantic_indexing)**
+- uses singular value decomposition (SVD) over a document-term matrix
+- equivalent to multivariate principle components analysis (PCA)
+
+**[Latent Dirichlet Allocation (LDA)](https://en.wikipedia.org/wiki/Latent_Dirichlet_allocation)**
+- a generative (i.e, probabilistic) framework for estimating topics 
+- assumes each document is a mixture of topics defined by the words in the document
+- most commonly used today
+
+***
+
+### Latent Dirichlet Allocation (LDA)
+#### Algorithm
+- Initialization
+    - Choose the number of topics 
+    - Randomly assign topics to words within a document according to a dirichlet distribution
+    - Gives you distributio of words over topics and distribution of topics over documents
+  
+- Learning - iteratively repeat the following:
+  For each document calculate:
+    - Probabality of each topic given the words in the document
+    - For each word, the probability of the different topics based on the topic assignment of that word in the other documents
+
+***
+
+#### Text pre-processing for LDA
+- LDA works off of raw term frequencies. So, tfidf is out here.
+
+- Preprocessing:
+    - lowercase, punctuation and stop-word removal
+    - tokenization
+    - stemming
+    - Removing low frequency words
+        - document occurence
+        - using tfidf cutoff
+
+***
+
+### LDA over DoGoodData session descriptions
+- Let's have some fun with DoGoodData's data!
+- Data is a webscrape of the session description
+- This is a toy example, and is __not__ the right data for topic modeling
+    - there aren't enough documents
+    - text is sometimes not very long
+  
+- All that being said...today we'll use the [```topicmodels```](https://cran.r-project.org/web/packages/topicmodels/index.html) library
+
+**Create a document-term matrix as before**
+```{r LDA1a, eval = T, cache = T}
+library(topicmodels)
+dgd_txt = textfile("./pres_data/DoGoodData_sessions/*.txt", cache = F)
+dgd_corpus1 = corpus(dgd_txt)
+dgd_dfm1 = dfm(dgd_corpus1, clean = T, verbose = F,
+              ignoredFeatures = stopwords("english"))
+paste0("Matrix dimensions: ", paste(dim(dgd_dfm1), collapse = " X "))
+
+```
+**Run the topic model with 10 topics**
+```{r LDA1a1, eval = T, cache = T}
+dgd_LDA10 <- LDA(convert(dgd_dfm1, to = "topicmodels"), k = 10)
+
+```
+
+***
+
+#### LDA1 - Results
+View top 5 terms for each document
+```{r LDA1c, cache = T}
+get_terms(dgd_LDA10,5)
+```
+What do you think?
+
+***
+
+#### "Improving" our LDA
+Lots of repeated terms across topics
+```{r LDA2a, cache = T}
+topfeatures(dgd_dfm1)
+```
+Definitely too many topics given our corpus size
+```{r LDA2b, cache = T}
+top_remove =  names(topfeatures(dgd_dfm1)[1:8])
+dgd_dfm = dfm(dgd_corpus, clean = T, verbose = F,
+              ignoredFeatures = c(top_remove,stopwords("english")))
+#run with 4 topics only
+dgd_LDA4<- LDA(convert(dgd_dfm, to = "topicmodels"), k = 4)
+get_terms(dgd_LDA4,5)
+```
+- __NOTE:__ removing terms as below is not typical for topic modeling
+- It's done here to illustrate the differerences between topics
+
+*** 
+
+#### Visualizing Topic Models - wordclouds
+- Wordclouds here came from topic models run on nonprofit mission statements located in their 990 tax forms
+- Words are top X words for a topic, Size correspond to the weight.
+
+![alt text](./pres_data/images/topic_27.png)
+![alt text](./pres_data/images/topic_52.png)
+
+***
+
+#### Visualizing Topic Models - networks
+- Nodes are words, edges are associations to the same topic
+<div align="center">
+<img src="./pres_data/images/semantic_network.png" width=900 height=700>
+</div>
+
+image comes from [tetne tutorial](http://diging.github.io/tethne/api/tutorial.mallet.html)
+
+***
+
+#### Visualizing Topic Models with LDAvis
+- [LDAvis](https://github.com/cpsievert/LDAvis): a fantastic tool for both R and Python
+- Trick is to get your topic model data in the right format
+- Here, I modified some code from [Christopher Gandrud](http://christophergandrud.blogspot.com/2015/05/a-link-between-topicmodels-lda-and.html) (hidden below)
+```{r ldaVis_code, echo = T, cache = T}
+#' Convert the output of a topicmodels Latent Dirichlet Allocation to JSON
+#' for use with LDAvis
+#'
+#' @param fitted Output from a topicmodels \code{LDA} model.
+#' @param corpus Corpus object used to create the document term
+#' matrix for the \code{LDA} model. This should have been create with
+#' the tm package's \code{Corpus} function.
+#' @param doc_term The document term matrix used in the \code{LDA}
+#' model. This should have been created with the quanteda's
+#' \code{dtm} function.
+#'
+#' @seealso \link{LDAvis}.
+#' @export
+
+topicmodels_json_ldavis <- function(fitted, corpus, doc_term){
+    # Required packages
+    library(topicmodels)
+    library(quanteda)
+    library(LDAvis)
+
+    # Find required quantities
+  
+    phi <- as.matrix(posterior(fitted)$terms) #a matrix with the topic-term distributions
+    theta <- as.matrix(posterior(fitted)$topics) #a matrix with the document-topic distributions
+    #vocabulary used to fit model
+    vocab = doc_term@Dimnames$features 
+    #summary of corpus, used to get token count for each document
+    corpus_summary = summary(corpus, verbose = F)
+    doc_length = corpus_summary$Tokens 
+    
+    term_frequency = doc_term@p[2:length(doc_term@p)] #first element is 0
+
+    # Convert to json
+    json_lda <- LDAvis::createJSON(phi = phi, theta = theta,
+                            vocab = vocab,
+                            doc.length = doc_length,
+                            term.frequency = term_frequency)#freq_matrix$Freq)
+
+    return(json_lda)
+}
+```
+**Process data and serve it up**
+```{r ldaVis, message = F, cache = T}
+#Visualizing the original topic model
+lda_vis_dat <- topicmodels_json_ldavis(fitted = dgd_LDA10, corpus = dgd_corpus1, doc_term = dgd_dfm1)
+# This should open a viewer in your RStudio session or a browser window
+serVis(lda_vis_dat)
+```
+
+*** 
+
+### How do you know if your model is right?
+This is hard to answer directly for unsupervised learning tasks
+- __Do the topics make sense?__
+    - Use your own judgment for this. There is no 'correct' answer.
+
+
+- __[Perplexity](http://qpleple.com/perplexity-to-evaluate-topic-models/) on a hold-out set of documents__
+    - How "confused" is the model with it's predictions for the words in the documents
+
+
+- __Can the results be used for another task?__ E.g., supervised learning
+    - In the end of topic modeling or clustering you've reduced your high-dimensional matrix into a much lower-dimensional representation
+        - Could be a cluster assignment for a given document
+        - Could be the topic loadings
+    - Does this new way of representing the data help in a supervised learning task? If so, then you're on to something.
+
+*** 
+
+## Supervised learning with text
+Using our vectorized text as features to learn about a known outcome variable
+**Today:**
+ - Sentiment Analysis
+ - Document Classification
+ 
+Commonly-used algorithms:
+- Naive Bayes
+- Multinomial logistic regression (a.k.a. maximum entropy; maxent)
+- Support Vector Machines
+
+Things that don't work so well:
+- Ensemble techniques like:
+  - Random Forests
+  - Gradient Boosting Machines
+
+***
+
+### Sentiment Analysis
+__Answers the question:__ What is the emotional valence of a particular piece of text?
+Old school:
+- create a dictionary of positive / negative terms
+- count frequency for each text source
+- majority count wins or difference/ratio of positive to negative
+
+Through the lens of machine learning:
+- Positive / negative valence can be seen as an outcome variable
+- This simply amounts to a supervised learning problem:
+  - __Categorization:__ Sentiment classified as positive, negative or neutral
+  - __Regression:__ Sentiment varies continuously from negative to positive
+- Categorization is more frequent
+
+
+#### Classifying sentiments of Tweets
+- Data comes from the [twitter sentiment corpus](http://thinknook.com/twitter-sentiment-analysis-training-corpus-dataset-2012-09-22/)
+- Each tweet is categorized as negative ("0") or positive ("1")
+
+```{r read_twit_sent}
+library(data.table)
+twit_dat = fread("./pres_data/Twitter_Sentiment_Data.csv")
+dim(twit_dat)
+names(twit_dat)
+twit_dat$SentimentText[1:5]
+```
+
+
+#### Data preprocessing for twitter sentiment
+```{r clean_twit_sent, cache = T}
+twit_dat$text_clean <- clean_tweets(twit_dat$SentimentText)
+
+tweet_corpus = corpus(twit_dat$text_clean) 
+tweet_dfm = dfm(tweet_corpus, clean = T, verbose = F,
+                ignoredFeatures = c(stopwords("english")))
+dim(tweet_dfm)
+#remove terms with low frequency across documents
+tweet_dfm = trim(tweet_dfm, minDoc = 200, verbose = T)
+tweet_dfm = weight(tweet_dfm, method = "tfidf")
+
+```
+
+#### Train a Naive Bayes classifier
+Using the ```e1071``` library
+(this might take a minute or two to complete)
+```{r naive_bayes, cache = T}
+library(e1071)
+
+#Split into train and test
+train_x = tweet_dfm[1:40000]
+test_x = tweet_dfm[40001:50000]
+train_y = twit_dat$Sentiment[1:40000]
+test_y = twit_dat$Sentiment[40001:50000]
+
+nb = naiveBayes(x = as.matrix(train_x), y = as.factor(train_y))
+preds = predict(nb, newdata = as.matrix(test_x), type = 'class')
+```
+
+#### Model Performance
+**Accuracy**
+```{r nb1 accuracy}
+accuracy = mean(preds == as.factor(test_y))
+print(paste0("Accuracy: ", accuracy))
+```
+
+**Confusion Matrix**
+```{r nb1 conf_mat}
+conf_mat = table(preds, as.factor(test_y), dnn= c("pred","actual"))
+print("Confusion Matrix:")
+conf_mat
+```
+
+
+*** 
+#### How could we improve our model?
+**Think about the _features_ being used here**
+
+- "@apostropheme i'm a real BOY goddamit!!!!!!!!!!!!!! guh. apostro. i feel sad. the library lady thinks i'm stupid. SHE'S STUPID.  j"       
+- "@Abigailjune92 Weeeeeelllllll helllllllo abbiie! No one ever tells me they have twitter and I've had it for ages. Hope you're not too ill"
+- "awwwwwwwwwwwww that is so beautiful. I just need to be in his arms tonight"
+
+
+#### Modified data cleaning and preprocessing a bit
+- Keep punctuation
+```{r, eval = T}
+txt = "i'm a real BOY goddamit!!!!!!!!!!!!!!"
+txt = str_replace_all(txt,"([:punct:])"," \\1 ")
+print(txt)
+```
+
+- Normalize repeated letters
+``` {r, eval = T}
+txt = "awwwwwwwwwwwww that is so beautiful."
+txt = str_replace_all(txt,"([a-z])\\1+","\\1\\1")
+print(txt)
+```
+
+- Keep stopwords
+  - they include 'not'
+
+- Stem
+  - to reduce some variation in wordforms
+
+```{r clean_tweets2, cache = T, echo = T}
+clean_tweets2 <- function(txt) {
+  #Args:
+  #  txt: character vector of text from twitter
+  
+  #Returns:
+  # txt:  cleaned character vector of text
+  
+  # remove retweet entities
+  txt = str_replace_all(txt, "(RT|via)((?:\\b\\W*@\\w+)+)", "")
+  # remove at people
+  txt = str_replace_all(txt,"@\\w+", "")
+  # remove html links
+  txt = str_replace_all(txt,"http\\S+", " ")
+  # keep punctuation but add a space
+  txt = str_replace_all(txt,"([:punct:])"," \\1 ")
+  # remove numbers
+  #txt = str_replace_all(txt, "[[:digit:]]", " ")
+  # remove unnecessary spaces
+  txt = str_replace_all(txt,"[ \t]{2,}", " ")
+  txt = str_trim(txt,"both")
+
+  #Normalize repeat letters
+  txt = str_replace_all(txt,"([a-z])\\1+","\\1\\1")
+  
+  txt = tolower(txt)
+  return(txt)
+}
+```
+
+***
+
+#### Naive Bayes2
+**Pre-Processing as described above**
+```{r clean_twit_sent2, cache = T, echo = T}
+twit_dat$text_clean <- clean_tweets2(twit_dat$SentimentText)
+
+tweet_corpus = corpus(twit_dat$text_clean) 
+tweet_dfm = dfm(tweet_corpus, clean = T, verbose = F, stem = T)
+#remove terms with low frequency across documents
+tweet_dfm = trim(tweet_dfm, minDoc = 200, verbose = T)
+tweet_dfm = weight(tweet_dfm, method = "tfidf")
+
+```
+
+**Train model as before**
+```{r naive_bayes2, cache = T, echo = T}
+library(e1071)
+
+#Split into train and test
+train_x = tweet_dfm[1:40000]
+test_x = tweet_dfm[40001:50000]
+train_y = twit_dat$Sentiment[1:40000]
+test_y = twit_dat$Sentiment[40001:50000]
+
+nb = naiveBayes(x = as.matrix(train_x), y = as.factor(train_y))
+preds = predict(nb, newdata = as.matrix(test_x), type = 'class')
+```
+
+#### Model 2 Performance
+**Accuracy**
+```{r nb2 accuracy}
+accuracy2 = mean(preds == as.factor(test_y))
+cat(paste0("Accuracy1: ", accuracy, "\nAccuracy2: ", accuracy2))
+```
+**Confusion Matrix**
+```{r nb2 conf_mat}
+conf_mat2 = table(preds, as.factor(test_y), dnn= c("pred","actual"))
+conf_mat2
+```
+
+- Well, that's a pretty modest improvement over the first model, but, sentiment is hard!
+
+
+#### Some food for thought re: sentiment analysis
+- As with any analysis: _Garbage in, Garbage out_
+  - some of our tweets aren't very good, nor is the scoring
+  
+- We're high-dimensional here: _More data = better_
+- Lot's of nuance to sentiment that's hard to learn, e.g., sarcasm
+
+***
+
+### Document classification
+__Answers the question:__ What category should this document be assigned to?
+
+**Examples:**
+ - Categorize emails according to a known system
+ - Tag comment section / tweets / websites according to some taxonomy
+ 
+- From a machine learning standpoint, this is the same thing as sentiment analysis using a categorical outcome
+- Often multi-category / multi-nomial
+- Otherwise, same principles apply!
+
+***
+
+Moving forward
+==============
+## Explore other ways of vectorizing text:
+(both easier in Python)
+
+1. [Hashing](https://en.wikipedia.org/wiki/Feature_hashing) vectorizers (available in [sklearn](http://scikit-learn.org/stable/modules/generated/sklearn.feature_extraction.text.HashingVectorizer.html))
+2. [word2vec](https://en.wikipedia.org/wiki/Word2vec) and doc2vec (available in [gensim](https://radimrehurek.com/gensim/models/doc2vec.html))
+
+***
+
+We've only scratched the surface of NLP!
+========================================================
+__- Syntactic analysis__
+
+  - Part-of-speech (POS) tagging
+  - Syntactic parsing
+
+__- Named entity recognition__
+
+  - Treating people/places/proper nouns as a single entity
+
+__- Machine translation__
+
+  - E.g., Google translate
+
+__- Speech recognition__
+
+  - Combines all of the above and more
+
+__- Natural language generation__
+
+  - algorithms that can produce language
+
+
+---
+
+Additional Resources
+========================================================
+## Regex
+- [Decent cheatsheet](http://www.rexegg.com/regex-quickstart.html)
+- [Useful Quora Response](http://stackoverflow.com/questions/4736/learning-regular-expressions)
+- [RegexOne](http://regexone.com/) - tutorial walkthrough
+
+## Libraries for Text Processing
+### R
+- Check out [Natural Language Processing](https://cran.r-project.org/web/views/NaturalLanguageProcessing.html) on CRAN
+- The [tm](https://cran.r-project.org/web/packages/tm/index.html) provides lots of NLP functionality
+- [quanteda](https://cran.r-project.org/web/packages/quanteda/index.html)
+
+### Python
+- [NLTK](http://www.nltk.org/) - lots of NLP functionality 
+- [gensim](https://radimrehurek.com/gensim/) - fantastic for topic modeling, vectorizing and beyond
+- [Pattern](http://www.clips.ua.ac.be/pattern) for NLP and web scraping
+
+### Free NLP libraries, cross platform or Python
+- [openNLP](https://opennlp.apache.org/)
+- [Stanford Core NLP](http://stanfordnlp.github.io/CoreNLP/)
+- [Stanford Part of Speech (POS) tagger](http://nlp.stanford.edu/software/tagger.shtml)
+- [Stanford Named Entity Recognition (NER)](http://nlp.stanford.edu/software/CRF-NER.shtml)
+
+---
+
+## Web-scraping
+### R
+- [Selenium](https://github.com/ropensci/RSelenium) - web crawling by simulating a browser
+- [Rcurl](https://cran.r-project.org/web/packages/RCurl/index.html) - web requests
+- [rvest](https://github.com/hadley/rvest) for DOM parsing
+
+### Python
+- [Selenium](http://selenium-python.readthedocs.io/) - web crawling
+- [Scrapy](http://scrapy.org/) - web crawling
+- [Beautiful Soup](https://pypi.python.org/pypi/beautifulsoup4) - web crawling + DOM parsing
+
+---
+
+## Twitter
+### R
+- [twitteR](https://cran.r-project.org/web/packages/twitteR/index.html)
+
+### Python
+- [python-twitter](https://github.com/bear/python-twitter)
+- [Tweepy](http://www.tweepy.org/)
+
+---
+
+## Data sources + Corpora
+- [Wikipedia Dump](https://en.wikipedia.org/wiki/Wikipedia:Database_download) - all of wikipedia in multiple languages
+- [UCI machine learning repository - text](http://archive.ics.uci.edu/ml/datasets.html?format=&task=&att=&area=&numAtt=&numIns=&type=text&sort=nameUp&view=table)
+
+- [Penn Treebank](https://www.cis.upenn.edu/~treebank/) - grammatically annotated text
+
+### News
+- [Reuters](http://about.reuters.com/researchandstandards/corpus/)
+- [New York Times](https://catalog.ldc.upenn.edu/LDC2008T19)
+
+### Multilingual
+- [Europarl](http://www.statmt.org/europarl/) - translation of European parliament between many languages
+- [OPUS](http://opus.lingfil.uu.se/) - multilingual corpus of translated text
+- [DCEP](https://ec.europa.eu/jrc/en/language-technologies/dcep) - Digital corpus of the European Parliament
+
+### Lists of corpora
+- [Wikipedia](https://en.wikipedia.org/wiki/List_of_text_corpora)
+- [BYU.edu](http://corpus.byu.edu/)
+- [Lancaster.uk](http://www.lancaster.ac.uk/staff/xiaoz/papers/corpus%20survey.htm)
+- [UOW.edu.au](http://www.uow.edu.au/~dlee/corpora.htm)
+- [Center for Research in Language](http://crl.ucsd.edu/corpora/)
